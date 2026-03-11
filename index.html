@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>足迹地图 v12.0 (样式与注记版)</title>
+    
+    <!-- 核心库 CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+    
+    <style>
+        /* --- 全局与布局 --- */
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; overflow: hidden; background: #f4f6f8; }
+        #container { display: flex; height: 100vh; width: 100vw; }
+        
+        /* --- 侧边栏 --- */
+        #sidebar { width: 360px; background: #fff; border-right: 1px solid #d1d5db; display: flex; flex-direction: column; z-index: 1000; flex-shrink: 0; box-shadow: 4px 0 15px rgba(0,0,0,0.05); }
+        .sidebar-header { background: #212529; color: white; padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; }
+        .sidebar-header h1 { margin: 0; font-size: 18px; letter-spacing: 1px; }
+
+        /* 操作区 */
+        .controls-area { padding: 10px 15px; background: #f8f9fa; border-bottom: 1px solid #eee; display: flex; gap: 8px; }
+        .btn-io { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; color: white; font-weight: bold; font-size: 12px; transition: 0.2s; }
+        .btn-save { background: #198754; } .btn-save:hover { background: #157347; }
+        .btn-load { background: #ffc107; color: #333; } .btn-load:hover { background: #e0a800; }
+
+        .scroll-content { flex: 1; overflow-y: auto; padding: 15px; }
+
+        /* 卡片容器 */
+        .panel-box { background: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 12px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .panel-title { font-weight: bold; margin-bottom: 10px; font-size: 13px; color: #495057; display: flex; align-items: center; border-left: 3px solid #0d6efd; padding-left: 8px; }
+        .panel-title.shp-title { border-left-color: #28a745; }
+        
+        /* 输入控件 */
+        .input-group { margin-bottom: 10px; }
+        input[type="file"], textarea, input[type="text"] { width: 100%; box-sizing: border-box; margin-bottom: 8px; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 12px; }
+        .btn-add { width: 100%; padding: 8px; border: none; border-radius: 4px; cursor: pointer; color: white; background: #0d6efd; transition: 0.2s; }
+        .btn-add:hover { background: #0b5ed7; }
+        .btn-geo { background: #0dcaf0; color: #000; } .btn-geo:hover { background: #31d2f2; }
+        .btn-shp { background: #28a745; } .btn-shp:hover { background: #218838; }
+
+        /* 可视化工具箱按钮 */
+        .viz-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .btn-viz { padding: 8px; border: 1px solid #dee2e6; background: #fff; color: #333; border-radius: 4px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 5px; transition: 0.2s; }
+        .btn-viz:hover { background: #e9ecef; }
+        .btn-viz.active { background: #e7f1ff; color: #0d6efd; border-color: #0d6efd; }
+        .btn-viz.playing { background: #fff3cd; color: #856404; border-color: #ffeeba; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+
+        /* 图层列表 */
+        .layer-section { margin-top: 10px; }
+        .section-header { font-size: 11px; font-weight: bold; color: #adb5bd; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .layer-item { background: #fff; border: 1px solid #dee2e6; border-left: 4px solid #0d6efd; border-radius: 4px; margin-bottom: 6px; padding: 8px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: 0.2s; }
+        .layer-item:hover { background: #f8f9fa; transform: translateX(2px); }
+        .layer-item.geo-item { border-left-color: #0dcaf0; }
+        .layer-item.shp-item { border-left-color: #28a745; }
+        .layer-item.geo-item:hover::after, .layer-item.shp-item:hover::after { content: '🖱️双击菜单'; position: absolute; right: 80px; font-size: 10px; color: #666; background: #fff; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; pointer-events: none; }
+        .layer-info { flex: 1; overflow: hidden; }
+        .layer-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .layer-meta { font-size: 11px; color: #888; }
+        .icon-btn { background: none; border: none; cursor: pointer; padding: 4px; opacity: 0.5; transition: 0.2s; }
+        .icon-btn:hover { opacity: 1; background: #e9ecef; border-radius: 4px; }
+
+        /* --- 右侧主区 --- */
+        #main-area { flex: 1; display: flex; flex-direction: column; position: relative; }
+        #map { flex: 1; width: 100%; height: 100%; z-index: 1; }
+        
+        /* Leaflet Marker */
+        .photo-marker-wrap { background: white; padding: 2px; border-radius: 3px; box-shadow: 0 2px 5px rgba(0,0,0,0.4); transition: transform 0.2s; width: 32px; height: 32px; position: relative; }
+        .photo-marker-wrap:hover { transform: scale(1.5); z-index: 9999; border: 2px solid #0d6efd; }
+        .photo-marker-wrap::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); border-width: 5px 5px 0; border-style: solid; border-color: white transparent transparent transparent; }
+        .marker-img { width: 100%; height: 100%; object-fit: cover; border-radius: 2px; }
+        
+        .playback-icon { font-size: 24px; text-shadow: 0 2px 5px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
+        .fog-canvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 400; }
+
+        /* --- 弹窗组件 --- */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 4000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+        .guide-content { background: white; padding: 30px; border-radius: 12px; width: 600px; max-width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.3); position: relative; }
+        .guide-close { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: #999; }
+        
+        .modal-box { background: white; padding: 20px; border-radius: 8px; width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.25); }
+        .modal-title { margin-top: 0; color: #333; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
+
+        .guide-section { margin-bottom: 20px; }
+        .guide-section h3 { margin-top: 0; color: #0d6efd; border-bottom: 1px solid #eee; padding-bottom: 5px; font-size: 16px; }
+        .guide-section p { font-size: 14px; line-height: 1.6; color: #555; }
+
+        /* 样式编辑器 */
+        .style-options { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 15px 0; }
+        .color-circle { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; margin: 0 auto; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .color-circle.selected { border-color: #333; transform: scale(1.2); }
+
+        /* 灯箱 */
+        #lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 5000; display: none; align-items: center; justify-content: center; }
+        #lightbox img { max-width: 90vw; max-height: 90vh; object-fit: contain; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .lb-close { position: absolute; top: 20px; right: 30px; color: white; font-size: 40px; cursor: pointer; opacity: 0.7; z-index: 5001; }
+        .lb-nav { position: absolute; top: 50%; color: white; font-size: 50px; cursor: pointer; padding: 20px; opacity: 0.5; z-index: 5001; user-select: none; transform: translateY(-50%); }
+        .lb-nav:hover, .lb-close:hover { opacity: 1; }
+        .lb-prev { left: 10px; } .lb-next { right: 10px; }
+        .lb-caption { position: absolute; bottom: 20px; left: 0; width: 100%; text-align: center; color: #ddd; font-size: 14px; background: rgba(0,0,0,0.5); padding: 10px 0; }
+
+        /* 增强的Loading状态反馈 */
+        #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 2000; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        .loading-spinner { 
+            width: 50px; height: 50px; 
+            border: 4px solid #f3f3f3; 
+            border-top: 4px solid #0d6efd; 
+            border-radius: 50%; 
+            animation: spin 1s linear infinite; 
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loading-text { margin-top: 15px; font-weight: bold; color: #333; font-size: 14px; }
+        .loading-detail { margin-top: 8px; color: #666; font-size: 12px; max-width: 300px; text-align: center; }
+        .loading-progress { margin-top: 10px; width: 200px; height: 4px; background: #e9ecef; border-radius: 2px; overflow: hidden; }
+        .loading-progress-bar { height: 100%; background: #0d6efd; width: 0%; transition: width 0.3s; }
+
+        /* 状态提示 Toast */
+        #toast { 
+            position: fixed; top: 20px; right: 20px; 
+            background: #333; color: white; 
+            padding: 12px 20px; border-radius: 6px; 
+            z-index: 6000; display: none; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease;
+        }
+        #toast.success { background: #28a745; }
+        #toast.error { background: #dc3545; }
+        #toast.info { background: #0d6efd; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        /* 帮助提示 */
+        .help-text { font-size: 11px; color: #6c757d; margin-top: 5px; line-height: 1.4; }
+        .file-types { display: inline-block; background: #e9ecef; padding: 2px 6px; border-radius: 3px; font-size: 10px; color: #495057; }
+        
+        /* 文字注记样式 */
+        .map-label {
+            font-family: "Microsoft YaHei", "SimHei", "黑体", sans-serif !important;
+            font-weight: bold;
+            text-shadow: 
+                -1px -1px 0 #fff, 1px -1px 0 #fff,
+                -1px 1px 0 #fff, 1px 1px 0 #fff,
+                0 0 3px rgba(255,255,255,0.9);
+            white-space: nowrap;
+            pointer-events: none;
+            line-height: 1.2;
+        }
+        .map-label-container { background: transparent !important; border: none !important; }
+        
+        /* 右键菜单 */
+        .context-menu {
+            position: fixed;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 5000;
+            display: none;
+            min-width: 160px;
+        }
+        .context-menu-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 13px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.2s;
+        }
+        .context-menu-item:last-child { border-bottom: none; }
+        .context-menu-item:hover { background: #f8f9fa; }
+    </style>
+</head>
+<body>
+
+<!-- 增强的Loading -->
+<div id="loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loadingText">处理中...</div>
+    <div class="loading-detail" id="loadingDetail"></div>
+    <div class="loading-progress" id="loadingProgress" style="display:none;">
+        <div class="loading-progress-bar" id="loadingProgressBar"></div>
+    </div>
+</div>
+
+<!-- Toast 提示 -->
+<div id="toast"></div>
+
+<!-- 右键菜单 -->
+<div id="contextMenu" class="context-menu">
+    <div class="context-menu-item" onclick="openStyleModal(currentContextId)">🎨 修改图形样式</div>
+    <div class="context-menu-item" onclick="openLabelStyleModal(currentContextId)">🏷️ 修改注记样式</div>
+    <div class="context-menu-item" onclick="toggleLabelVisibility(currentContextId)">👁️ 切换注记显示</div>
+</div>
+
+<!-- 使用指南 -->
+<div id="guideModal" class="modal-overlay">
+    <div class="guide-content">
+        <span class="guide-close" onclick="toggleModal('guideModal', false)">&times;</span>
+        <h2 style="margin-top:0; display:flex; align-items:center; gap:10px">📖 使用指南 <span style="font-size:12px; font-weight:normal; background:#ffc107; padding:2px 6px; border-radius:4px; color:#333">v12.0</span></h2>
+        
+        <div class="guide-section">
+            <h3>🎨 样式与注记 (v12.0 新增)</h3>
+            <p>
+                <b>图形样式</b>：双击图层，选择"修改图形样式"可调整颜色、线条粗细、点大小、填充透明度。<br>
+                <b>文字注记</b>：自动显示"名称/name/地名"字段，使用黑体字体，带白色描边。<br>
+                <b>注记样式</b>：双击图层选择"修改注记样式"可调整颜色、字体大小；选择"切换注记显示"可开关注记。
+            </p>
+        </div>
+        <div class="guide-section">
+            <h3>🗺️ SHP数据支持</h3>
+            <p>
+                <b>Shapefile压缩包</b>：支持上传包含.shp、.shx、.dbf、.prj等文件的ZIP压缩包。<br>
+                <b>自动识别</b>：系统会自动解压并读取空间数据，支持点、线、面等多种几何类型。
+            </p>
+        </div>
+        <div class="guide-section">
+            <h3>🗺️ 底图切换</h3>
+            <p>
+                <b>高德地图</b>：新增高德卫星图、高德矢量图。<br>
+                <b>天地图</b>：支持球面墨卡托 (_w) 接口。
+            </p>
+        </div>
+        <div class="guide-section">
+            <h3>✨ 交互优化</h3>
+            <p>点击上传的地理要素（如轨迹线、区域）时，弹窗将智能只显示 <b>“名称”</b> 属性，不再显示杂乱的JSON数据。</p>
+        </div>
+    </div>
+</div>
+
+<!-- 图形样式编辑器 -->
+<div id="styleModalOverlay" class="modal-overlay">
+    <div class="modal-box" style="width:360px;">
+        <h3 class="modal-title">🎨 修改图形样式</h3>
+        <div style="font-size:12px;color:#666;margin-bottom:10px;">图层类型: <span id="styleGeometryType">-</span></div>
+        <div class="style-options" id="colorPalette"></div>
+        <div style="margin:15px 0;padding:10px;background:#f8f9fa;border-radius:6px;">
+            <div style="display:flex;align-items:center;margin-bottom:8px;">
+                <label style="font-size:12px;color:#666;width:80px;">线条粗细:</label>
+                <input type="range" id="weightInput" min="1" max="10" value="3" style="flex:1;" oninput="document.getElementById('weightVal').innerText=this.value">
+                <span id="weightVal" style="font-size:12px;width:30px;text-align:right;">3</span>px
+            </div>
+            <div style="display:flex;align-items:center;margin-bottom:8px;">
+                <label style="font-size:12px;color:#666;width:80px;">点大小:</label>
+                <input type="range" id="radiusInput" min="3" max="20" value="6" style="flex:1;" oninput="document.getElementById('radiusVal').innerText=this.value">
+                <span id="radiusVal" style="font-size:12px;width:30px;text-align:right;">6</span>px
+            </div>
+            <div style="display:flex;align-items:center;">
+                <label style="font-size:12px;color:#666;width:80px;">填充透明:</label>
+                <input type="range" id="fillOpacityInput" min="0" max="100" value="30" style="flex:1;" oninput="document.getElementById('fillOpacityVal').innerText=this.value">
+                <span id="fillOpacityVal" style="font-size:12px;width:30px;text-align:right;">30</span>%
+            </div>
+        </div>
+        <div style="text-align:right;">
+            <button onclick="toggleModal('styleModalOverlay', false)" style="padding:8px 16px;border:none;background:#eee;border-radius:4px;cursor:pointer">取消</button>
+            <button onclick="applyStyle()" style="padding:8px 16px;border:none;background:#0d6efd;color:white;border-radius:4px;cursor:pointer;margin-left:8px;">确定应用</button>
+        </div>
+    </div>
+</div>
+
+<!-- 注记样式编辑器 -->
+<div id="labelStyleModalOverlay" class="modal-overlay">
+    <div class="modal-box" style="width:340px;">
+        <h3 class="modal-title">🏷️ 修改注记样式</h3>
+        <div style="margin-bottom:15px;padding:10px;background:#e7f3ff;border-radius:6px;font-size:12px;color:#0d6efd;">
+            💡 自动显示"名称/name/地名"字段，黑体字体
+        </div>
+        <div style="font-size:12px;font-weight:bold;color:#495057;margin-bottom:8px;">🎨 注记颜色</div>
+        <div class="style-options" id="labelColorPalette" style="margin-bottom:15px;"></div>
+        <div style="display:flex;align-items:center;margin-bottom:15px;padding:10px;background:#f8f9fa;border-radius:6px;">
+            <label style="font-size:12px;color:#666;width:80px;">字体大小:</label>
+            <input type="range" id="labelSizeInput" min="10" max="24" value="13" style="flex:1;" oninput="document.getElementById('labelSizeVal').innerText=this.value">
+            <span id="labelSizeVal" style="font-size:12px;width:35px;text-align:right;">13</span>px
+        </div>
+        <div style="display:flex;align-items:center;margin-bottom:15px;">
+            <label style="font-size:12px;color:#666;width:80px;">显示注记:</label>
+            <input type="checkbox" id="labelShowInput" checked style="width:18px;height:18px;">
+        </div>
+        <div style="text-align:right;">
+            <button onclick="toggleModal('labelStyleModalOverlay', false)" style="padding:8px 16px;border:none;background:#eee;border-radius:4px;cursor:pointer">取消</button>
+            <button onclick="applyLabelStyle()" style="padding:8px 16px;border:none;background:#28a745;color:white;border-radius:4px;cursor:pointer;margin-left:8px;">确定应用</button>
+        </div>
+    </div>
+</div>
+
+<!-- 天地图密钥输入框 -->
+<div id="tkModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3 class="modal-title">🔑 输入天地图密钥 (Token)</h3>
+        <p style="font-size:12px;color:#666;line-height:1.5">检测到您切换到了天地图图层。<br>为了正常显示 <b>影像(_w) / 地形(_w)</b>，请输入您的 API Key。<br><a href="http://lbs.tianditu.gov.cn/server/list.html" target="_blank">点击此处申请 Key</a></p>
+        <div class="input-group">
+            <input type="text" id="tdtKey" placeholder="粘贴 Key (例如: 8a6f...)">
+        </div>
+        <div style="text-align:right;margin-top:10px">
+            <button onclick="saveTdtToken()" style="padding:6px 15px;border:none;background:#0d6efd;color:white;border-radius:4px;cursor:pointer;">确定使用</button>
+        </div>
+    </div>
+</div>
+
+<!-- 灯箱 -->
+<div id="lightbox">
+    <div class="lb-close" onclick="closeLightbox()">&times;</div>
+    <div class="lb-nav lb-prev" onclick="changeLightImage(-1)">&#10094;</div>
+    <div class="lb-nav lb-next" onclick="changeLightImage(1)">&#10095;</div>
+    <img id="lb-img" src="">
+    <div class="lb-caption" id="lb-caption"></div>
+</div>
+
+<!-- 主界面 -->
+<div id="container">
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <h1>🌏 足迹地图 Pro</h1>
+        </div>
+        <div class="controls-area">
+            <button class="btn-io btn-save" onclick="saveProject()">💾 保存数据</button>
+            <button class="btn-io btn-load" onclick="document.getElementById('projectInput').click()">📂 读取记录</button>
+            <input type="file" id="projectInput" accept=".json" style="display:none" onchange="loadProject(this)">
+        </div>
+
+        <div class="scroll-content">
+            <div class="panel-box">
+                <div class="panel-title">可视化工具箱</div>
+                <div class="viz-tools">
+                    <button class="btn-viz" id="btnHeat" onclick="toggleHeatmap()">🔥 热力图</button>
+                    <button class="btn-viz" id="btnLine" onclick="toggleTrajectory()">〰️ 轨迹线</button>
+                    <button class="btn-viz" id="btnFog" onclick="toggleFog()">🌫️ 迷雾模式</button>
+                    <button class="btn-viz" id="btnPlay" onclick="togglePlayback()">🎬 轨迹回放</button>
+                </div>
+            </div>
+
+            <div class="panel-box">
+                <div class="panel-title">数据导入</div>
+                <div class="input-group">
+                    <label style="font-size:12px;color:#666">📸 批量照片 (Max 10):</label>
+                    <input type="file" id="photoInput" accept="image/jpeg, image/jpg" multiple>
+                    <textarea id="photoDesc" rows="1" placeholder="描述..."></textarea>
+                    <button class="btn-add" onclick="processPhotosBatch()">上传照片</button>
+                </div>
+                <hr style="border:0;border-top:1px dashed #eee;margin:10px 0;">
+                <div class="input-group">
+                    <label style="font-size:12px;color:#666">🗺️ 地理数据 (GeoJSON/KML):</label>
+                    <input type="file" id="geoInput" accept=".geojson,.json,.kml">
+                    <button class="btn-add btn-geo" onclick="processGeoData()">上传数据</button>
+                </div>
+            </div>
+
+            <!-- SHP数据导入区域 -->
+            <div class="panel-box">
+                <div class="panel-title shp-title">📦 SHP空间数据 (ZIP)</div>
+                <div class="input-group">
+                    <label style="font-size:12px;color:#666">选择包含SHP文件的压缩包:</label>
+                    <input type="file" id="shpInput" accept=".zip" onchange="handleShpFileSelect(this)">
+                    <div class="help-text">
+                        <span class="file-types">ZIP</span> 
+                        压缩包应包含: .shp, .shx, .dbf 文件（可选 .prj 投影文件）
+                    </div>
+                    <div id="shpFileInfo" style="margin-top:8px;padding:8px;background:#f8f9fa;border-radius:4px;display:none;">
+                        <div style="font-size:12px;color:#28a745;font-weight:bold;">✓ 已选择文件</div>
+                        <div id="shpFileName" style="font-size:11px;color:#666;"></div>
+                    </div>
+                </div>
+                <button class="btn-add btn-shp" onclick="processShpData()" id="shpUploadBtn" disabled>📥 导入SHP数据</button>
+                <div id="shpStatus" style="margin-top:8px;font-size:11px;color:#666;display:none;"></div>
+            </div>
+
+            <div class="layer-section">
+                <div class="section-header">📸 照片图层 (<span id="photoCount">0</span>)</div>
+                <div id="photoListContainer"></div>
+            </div>
+            <div class="layer-section" style="margin-top:20px">
+                <div class="section-header">🗺️ 数据图层 (<span id="geoCount">0</span>)</div>
+                <div id="geoListContainer"></div>
+            </div>
+            <div class="layer-section" style="margin-top:20px">
+                <div class="section-header">📦 SHP图层 (<span id="shpCount">0</span>)</div>
+                <div id="shpListContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-area">
+        <div id="map"></div>
+    </div>
+</div>
+
+<!-- 依赖库 -->
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+<script src="https://unpkg.com/shpjs@latest/dist/shp.js"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://api.tiles.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.3.1/leaflet-omnivore.min.js"></script>
+
+<script>
+    // --- 状态管理 ---
+    let appData = [];
+    let layerInstances = {};
+    let labelLayers = {}; // 存储注记图层
+    let currentEditId = null;
+    let currentContextId = null; // 右键菜单当前图层ID
+    let heatLayer = null;
+    let trajectoryLayer = null;
+    let lightboxPhotos = [];
+    let currentLightboxIndex = 0;
+    
+    let fogCanvas = null;
+    let isFogActive = false;
+    let playbackMarker = null;
+    let isPlaying = false;
+    let playbackFrameId = null;
+
+    let tdtToken = localStorage.getItem('tdt_token') || ""; 
+    const amapKey = "4c332aa898ab473bd2679f017c851d31"; // 高德Key
+
+    // 当前选中的SHP文件
+    let selectedShpFile = null;
+
+    // --- 1. 地图初始化 ---
+    
+    // A. 天地图部分
+    const tdtUrl = (type, token) => `https://t{s}.tianditu.gov.cn/DataServer?T=${type}_w&x={x}&y={y}&l={z}&tk=${token}`;
+    const subdomains = ['0', '1', '2', '3', '4', '5', '6', '7'];
+
+    const tdtVec = L.layerGroup([
+        L.tileLayer(tdtUrl('vec', tdtToken), { subdomains, maxZoom: 18, attribution: 'Tianditu' }),
+        L.tileLayer(tdtUrl('cva', tdtToken), { subdomains, maxZoom: 18 })
+    ]);
+    const tdtImg = L.layerGroup([
+        L.tileLayer(tdtUrl('img', tdtToken), { subdomains, maxZoom: 18, attribution: 'Tianditu' }),
+        L.tileLayer(tdtUrl('cia', tdtToken), { subdomains, maxZoom: 18 })
+    ]);
+    const tdtTer = L.layerGroup([
+        L.tileLayer(tdtUrl('ter', tdtToken), { subdomains, maxZoom: 14, attribution: 'Tianditu' }),
+        L.tileLayer(tdtUrl('cta', tdtToken), { subdomains, maxZoom: 14 })
+    ]);
+
+    // B. 高德地图部分
+    const amapVecUrl = 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}';
+    const amapImgUrl = 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}';
+    const amapImgLabelUrl = 'https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}';
+    const amapSubdomains = ['1', '2', '3', '4'];
+
+    const amapVec = L.tileLayer(amapVecUrl, {
+        subdomains: amapSubdomains,
+        maxZoom: 18,
+        attribution: '高德地图'
+    });
+
+    const amapImg = L.layerGroup([
+        L.tileLayer(amapImgUrl, { subdomains: amapSubdomains, maxZoom: 18, attribution: '高德地图' }),
+        L.tileLayer(amapImgLabelUrl, { subdomains: amapSubdomains, maxZoom: 18 })
+    ]);
+
+    // C. 国际底图
+    const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 17, attribution: 'Esri' });
+    const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: 'OSM' });
+
+    // 初始化地图，默认高德矢量
+    const map = L.map('map', { center: [35, 105], zoom: 4, layers: [amapVec], zoomControl: false });
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    const baseLayers = {
+        "高德·矢量": amapVec,
+        "高德·影像": amapImg,
+        "天地图·矢量": tdtVec,
+        "天地图·影像": tdtImg,
+        "天地图·地形": tdtTer,
+        "卫星影像 (Esri)": satLayer,
+        "街道地图 (OSM)": osmLayer
+    };
+    L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
+
+    // 切换图层时检查 Key (天地图)
+    map.on('baselayerchange', function(e) {
+        if (e.name.includes("天地图") && !tdtToken) {
+            toggleModal('tkModal', true);
+        }
+    });
+
+    function saveTdtToken() {
+        const val = document.getElementById('tdtKey').value.trim();
+        if(!val) return alert("密钥不能为空");
+        tdtToken = val;
+        localStorage.setItem('tdt_token', tdtToken);
+        
+        const refreshGroup = (group, typeBase, typeLabel) => {
+            const layers = group.getLayers();
+            if(layers.length >= 2) {
+                layers[0].setUrl(tdtUrl(typeBase, tdtToken));
+                layers[1].setUrl(tdtUrl(typeLabel, tdtToken));
+            }
+        };
+        refreshGroup(tdtVec, 'vec', 'cva');
+        refreshGroup(tdtImg, 'img', 'cia');
+        refreshGroup(tdtTer, 'ter', 'cta');
+        toggleModal('tkModal', false);
+        showToast("密钥已保存，图层即将刷新", "success");
+    }
+
+    // --- 其他 UI & 逻辑 (保持不变) ---
+    const HelpControl = L.Control.extend({
+        options: { position: 'topleft' },
+        onAdd: map => {
+            const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-help');
+            div.innerHTML = '?'; div.onclick = () => toggleModal('guideModal', true);
+            return div;
+        }
+    });
+    map.addControl(new HelpControl());
+
+    const clusterGroup = L.markerClusterGroup({ maxClusterRadius: 40 });
+    map.addLayer(clusterGroup);
+
+    function toggleHeatmap() {
+        const btn = document.getElementById('btnHeat');
+        if(heatLayer) {
+            map.removeLayer(heatLayer); heatLayer = null; map.addLayer(clusterGroup);
+            btn.classList.remove('active'); btn.innerHTML = "🔥 热力图";
+        } else {
+            const points = appData.filter(x => x.type === 'photo' && x.visible).map(x => [x.content.lat, x.content.lng, 1]);
+            if(points.length === 0) return showToast("无可见照片", "error");
+            heatLayer = L.heatLayer(points, { radius: 25, blur: 15, maxZoom: 10 }).addTo(map);
+            map.removeLayer(clusterGroup);
+            btn.classList.add('active'); btn.innerHTML = "❌ 关闭热力";
+        }
+    }
+    function toggleTrajectory() {
+        const btn = document.getElementById('btnLine');
+        if(trajectoryLayer) {
+            map.removeLayer(trajectoryLayer); trajectoryLayer = null; btn.classList.remove('active');
+        } else {
+            const photos = getSortedPhotos();
+            if(photos.length < 2) return showToast("至少需要2张照片", "error");
+            const latlngs = photos.map(x => [x.content.lat, x.content.lng]);
+            trajectoryLayer = L.polyline(latlngs, { color: '#ffeb3b', weight: 4, dashArray: '10, 10', opacity: 0.8 }).addTo(map);
+            map.fitBounds(trajectoryLayer.getBounds());
+            btn.classList.add('active');
+        }
+    }
+    function toggleFog() {
+        const btn = document.getElementById('btnFog');
+        isFogActive = !isFogActive;
+        if(isFogActive) {
+            if(!fogCanvas) {
+                fogCanvas = document.createElement('canvas'); fogCanvas.className = 'fog-canvas';
+                map.getPanes().overlayPane.appendChild(fogCanvas); map.on('moveend zoomend', drawFog);
+            }
+            drawFog(); btn.classList.add('active'); btn.innerHTML = "❌ 关闭迷雾";
+        } else {
+            if(fogCanvas) { fogCanvas.remove(); fogCanvas = null; map.off('moveend zoomend', drawFog); }
+            btn.classList.remove('active'); btn.innerHTML = "🌫️ 迷雾模式";
+        }
+    }
+    function drawFog() {
+        if(!fogCanvas) return;
+        const size = map.getSize(); fogCanvas.width = size.x; fogCanvas.height = size.y;
+        const topLeft = map.containerPointToLayerPoint([0, 0]); L.DomUtil.setPosition(fogCanvas, topLeft);
+        const ctx = fogCanvas.getContext('2d'); ctx.clearRect(0, 0, size.x, size.y);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(0, 0, size.x, size.y);
+        ctx.globalCompositeOperation = 'destination-out';
+        appData.filter(x => x.visible && x.type === 'photo').forEach(p => {
+            const point = map.latLngToContainerPoint([p.content.lat, p.content.lng]);
+            const grad = ctx.createRadialGradient(point.x, point.y, 10, point.x, point.y, 60);
+            grad.addColorStop(0, 'rgba(0,0,0,1)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(point.x, point.y, 60, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.globalCompositeOperation = 'source-over';
+    }
+    function togglePlayback() {
+        const btn = document.getElementById('btnPlay');
+        if(isPlaying) {
+            stopPlayback(); btn.classList.remove('playing'); btn.innerHTML = "🎬 轨迹回放";
+        } else {
+            startPlayback(); btn.classList.add('playing'); btn.innerHTML = "⏹️ 停止回放";
+        }
+    }
+    function startPlayback() {
+        const photos = getSortedPhotos();
+        if(photos.length < 2) return showToast("需要至少2张照片", "error");
+        isPlaying = true;
+        const icon = L.divIcon({ className: 'playback-icon', html: '🚗', iconSize:[30,30], iconAnchor:[15,15] });
+        playbackMarker = L.marker([photos[0].content.lat, photos[0].content.lng], {icon: icon, zIndexOffset: 1000}).addTo(map);
+        let path = photos.map(p => L.latLng(p.content.lat, p.content.lng));
+        let currentIndex = 0; let progress = 0; const speed = 0.02;
+        function animate() {
+            if(!isPlaying) return;
+            progress += speed;
+            if(progress >= 1) {
+                progress = 0; currentIndex++;
+                if(currentIndex >= path.length - 1) { stopPlayback(); document.getElementById('btnPlay').classList.remove('playing'); document.getElementById('btnPlay').innerHTML = "🎬 轨迹回放"; return; }
+            }
+            const p1 = path[currentIndex], p2 = path[currentIndex + 1];
+            const lat = p1.lat + (p2.lat - p1.lat) * progress;
+            const lng = p1.lng + (p2.lng - p1.lng) * progress;
+            playbackMarker.setLatLng([lat, lng]);
+            playbackFrameId = requestAnimationFrame(animate);
+        }
+        animate();
+    }
+    function stopPlayback() {
+        isPlaying = false; if(playbackFrameId) cancelAnimationFrame(playbackFrameId);
+        if(playbackMarker) { map.removeLayer(playbackMarker); playbackMarker = null; }
+    }
+    function getSortedPhotos() { return appData.filter(x => x.type === 'photo' && x.visible).sort((a,b) => new Date(a.rawDate) - new Date(b.rawDate)); }
+    function openLightbox(photoId) {
+        lightboxPhotos = getSortedPhotos();
+        const idx = lightboxPhotos.findIndex(x => x.id === photoId);
+        if(idx === -1) return;
+        currentLightboxIndex = idx; updateLightboxContent();
+        document.getElementById('lightbox').style.display = 'flex';
+        document.onkeydown = (e) => { if(e.key === 'ArrowLeft') changeLightImage(-1); if(e.key === 'ArrowRight') changeLightImage(1); if(e.key === 'Escape') closeLightbox(); };
+    }
+    function closeLightbox() { document.getElementById('lightbox').style.display = 'none'; document.onkeydown = null; }
+    function changeLightImage(step) {
+        let newIdx = currentLightboxIndex + step;
+        if(newIdx < 0) newIdx = lightboxPhotos.length - 1; if(newIdx >= lightboxPhotos.length) newIdx = 0;
+        currentLightboxIndex = newIdx; updateLightboxContent();
+    }
+    function updateLightboxContent() {
+        const item = lightboxPhotos[currentLightboxIndex];
+        document.getElementById('lb-img').src = item.content.src;
+        document.getElementById('lb-caption').innerHTML = `<strong>${item.name}</strong><br>📅 ${item.dateStr} | ${currentLightboxIndex+1}/${lightboxPhotos.length}<br>${item.content.desc || ''}`;
+    }
+
+    async function processPhotosBatch() {
+        const input = document.getElementById('photoInput'), desc = document.getElementById('photoDesc').value;
+        if(input.files.length === 0) return showToast("请选择照片", "error");
+        loading(true, "正在读取照片GPS信息..."); let count = 0;
+        const processOne = (file) => new Promise(resolve => {
+            EXIF.getData(file, function() {
+                const latD = EXIF.getTag(this, "GPSLatitude"), lngD = EXIF.getTag(this, "GPSLongitude");
+                if(!latD || !lngD) return resolve(null);
+                let dStr = EXIF.getTag(this, "DateTimeOriginal") || EXIF.getTag(this, "DateTime");
+                let dObj = new Date();
+                if(dStr) {
+                    const [ymd, hms] = dStr.split(" "); const [y, m, d] = ymd.split(":"); const [H, M, S] = hms.split(":");
+                    dObj = new Date(y, m-1, d, H, M, S);
+                }
+                const reader = new FileReader();
+                reader.onload = e => resolve({
+                    id: Date.now() + Math.random().toString(), type: 'photo', name: file.name, visible: true,
+                    dateStr: dObj.toLocaleDateString(), rawDate: dObj, 
+                    content: { src: e.target.result, lat: convertDMS(latD, EXIF.getTag(this,"GPSLatitudeRef")), lng: convertDMS(lngD, EXIF.getTag(this,"GPSLongitudeRef")), desc: desc }
+                });
+                reader.readAsDataURL(file);
+            });
+        });
+        for(let f of input.files) { const item = await processOne(f); if(item) { addData(item); count++; } }
+        loading(false); input.value = ""; document.getElementById('photoDesc').value = "";
+        if(count === 0) showToast("没有读取到带GPS信息的照片", "error"); 
+        else showToast(`成功导入 ${count} 张照片`, "success");
+        if(isFogActive) drawFog();
+    }
+
+    // 处理GeoJSON/KML数据
+    function processGeoData() {
+        const input = document.getElementById('geoInput'); 
+        if(!input.files[0]) return showToast("请选择文件", "error"); 
+        loading(true, "正在解析地理数据...");
+        const f = input.files[0], n = f.name.toLowerCase();
+        const finish = (j) => { 
+            addData({ id: Date.now().toString(), type: 'geo', name: f.name, dateStr: new Date().toLocaleDateString(), visible: true, content: { geojson: j, style: { color: '#3388ff', weight: 3, radius: 5, fillOpacity: 0.2 } } }); 
+            loading(false); 
+            input.value = ""; 
+            showToast("地理数据导入成功", "success");
+        };
+        const r = new FileReader();
+        if(n.endsWith('.json')||n.endsWith('.geojson')) {
+            r.onload=e=>{
+                try{finish(JSON.parse(e.target.result))}catch(x){loading(false);showToast("JSON解析错误", "error")}
+            };
+            r.readAsText(f);
+        }
+        else if(n.endsWith('.kml')) {
+            r.onload=e=> {
+                try {
+                    const geojson = omnivore.kml.parse(e.target.result);
+                    finish(geojson.toGeoJSON());
+                } catch(x) {
+                    loading(false);
+                    showToast("KML解析错误", "error");
+                }
+            };
+            r.readAsText(f);
+        }
+        else { 
+            loading(false); 
+            showToast("不支持的文件格式", "error"); 
+        }
+    }
+
+    // --- SHP数据处理功能 ---
+
+    // SHP文件选择处理
+    function handleShpFileSelect(input) {
+        const file = input.files[0];
+        const infoDiv = document.getElementById('shpFileInfo');
+        const nameDiv = document.getElementById('shpFileName');
+        const uploadBtn = document.getElementById('shpUploadBtn');
+        
+        if (!file) {
+            infoDiv.style.display = 'none';
+            uploadBtn.disabled = true;
+            selectedShpFile = null;
+            return;
+        }
+        
+        // 验证文件类型
+        if (!file.name.toLowerCase().endsWith('.zip')) {
+            showToast('请选择ZIP格式的压缩包', 'error');
+            input.value = '';
+            return;
+        }
+        
+        selectedShpFile = file;
+        infoDiv.style.display = 'block';
+        nameDiv.innerHTML = `📄 ${file.name}<br>📦 ${(file.size / 1024).toFixed(1)} KB`;
+        uploadBtn.disabled = false;
+        
+        showToast('文件已选择，点击导入按钮开始处理', 'info');
+    }
+
+    // 处理SHP数据
+    async function processShpData() {
+        if (!selectedShpFile) {
+            showToast('请先选择ZIP文件', 'error');
+            return;
+        }
+        
+        loading(true, '正在读取SHP压缩包...', '解压并解析空间数据中，请稍候...');
+        
+        try {
+            // 使用shpjs直接处理zip文件
+            const arrayBuffer = await selectedShpFile.arrayBuffer();
+            
+            updateLoadingText('正在解析SHP空间数据...', '支持点、线、面等多种几何类型');
+            
+            // 使用shpjs解析
+            const geojson = await shp(arrayBuffer);
+            
+            if (!geojson || !geojson.features || geojson.features.length === 0) {
+                loading(false);
+                showToast('SHP文件中没有找到有效的空间数据', 'error');
+                return;
+            }
+            
+            updateLoadingText('正在添加到地图...', `包含 ${geojson.features.length} 个要素`);
+            
+            // 添加数据到地图
+            const fileName = selectedShpFile.name.replace('.zip', '').replace('.ZIP', '');
+            addData({ 
+                id: Date.now().toString(), 
+                type: 'shp', 
+                name: fileName, 
+                dateStr: new Date().toLocaleDateString(), 
+                visible: true, 
+                content: { 
+                    geojson: geojson, 
+                    featureCount: geojson.features.length,
+                    style: { color: '#28a745', weight: 3, radius: 5, fillOpacity: 0.3, fillColor: '#28a745' } 
+                } 
+            });
+            
+            loading(false);
+            showToast(`成功导入SHP数据，共 ${geojson.features.length} 个要素`, 'success');
+            
+            // 清空选择
+            document.getElementById('shpInput').value = '';
+            document.getElementById('shpFileInfo').style.display = 'none';
+            document.getElementById('shpUploadBtn').disabled = true;
+            selectedShpFile = null;
+            
+        } catch (error) {
+            loading(false);
+            console.error('SHP解析错误:', error);
+            
+            let errorMsg = 'SHP文件解析失败';
+            if (error.message && error.message.includes('shp')) {
+                errorMsg = '无法读取SHP文件，请确保ZIP中包含完整的.shp、.shx、.dbf文件';
+            } else if (error.message && error.message.includes('prj')) {
+                errorMsg = '投影文件缺失或无法识别，数据可能显示在错误位置';
+            }
+            
+            showToast(errorMsg, 'error');
+        }
+    }
+
+    // 添加数据到地图
+    function addData(item) {
+        appData.push(item);
+        if(item.type === 'photo') {
+            const icon = L.divIcon({ className: 'c', html: `<div class="photo-marker-wrap"><img src="${item.content.src}" class="marker-img"></div>`, iconSize: [36,36], iconAnchor: [18,36], popupAnchor: [0,-36] });
+            const m = L.marker([item.content.lat, item.content.lng], { icon: icon });
+            m.bindPopup(`<img src="${item.content.src}" style="width:100%;cursor:pointer" onclick="openLightbox('${item.id}')"><p>${item.content.desc||''}</p>`);
+            m.on('dblclick', e => { L.DomEvent.stopPropagation(e); openLightbox(item.id); });
+            if(item.visible) clusterGroup.addLayer(m); layerInstances[item.id] = m;
+        } else if (item.type === 'shp') {
+            // 初始化注记样式
+            if (!item.content.labelStyle) {
+                item.content.labelStyle = { color: '#000000', fontSize: 13, show: true };
+            }
+            const l = L.geoJSON(item.content.geojson, { 
+                style: item.content.style, 
+                pointToLayer: (f, ll) => L.circleMarker(ll, item.content.style), 
+                onEachFeature: (f, layer) => { 
+                    if(f.properties) {
+                        const p = f.properties;
+                        const nameContent = getNameFromProperties(p);
+                        let propTable = '';
+                        const excludedKeys = ['geometry', 'id'];
+                        for (let key in p) {
+                            if (p.hasOwnProperty(key) && !excludedKeys.includes(key) && p[key] !== null && p[key] !== undefined) {
+                                propTable += `<tr><td style="padding:2px 8px;font-weight:bold;color:#666;">${key}</td><td style="padding:2px 8px;">${p[key]}</td></tr>`;
+                            }
+                        }
+                        let popupContent;
+                        if (nameContent) {
+                            popupContent = `<strong style="font-size:14px;color:#28a745;">${nameContent}</strong>`;
+                            if (propTable) {
+                                popupContent += `<table style="margin-top:8px;font-size:12px;border-collapse:collapse;">${propTable}</table>`;
+                            }
+                        } else if (propTable) {
+                            popupContent = `<table style="font-size:12px;border-collapse:collapse;">${propTable}</table>`;
+                        } else {
+                            popupContent = "无属性数据";
+                        }
+                        layer.bindPopup(popupContent);
+                    }
+                } 
+            });
+            if(item.visible) {
+                l.addTo(map); 
+                // 添加注记
+                setTimeout(() => updateLabels(item.id), 100);
+            }
+            layerInstances[item.id] = l; 
+            try { 
+                map.fitBounds(l.getBounds(), { padding: [50, 50] }); 
+            } catch(e) {
+                showToast('无法自动缩放到数据范围', 'info');
+            }
+        } else {
+            // 初始化注记样式
+            if (!item.content.labelStyle) {
+                item.content.labelStyle = { color: '#000000', fontSize: 13, show: true };
+            }
+            const l = L.geoJSON(item.content.geojson, { 
+                style: item.content.style, 
+                pointToLayer: (f, ll) => L.circleMarker(ll, item.content.style), 
+                onEachFeature: (f, layer) => { 
+                    if(f.properties) {
+                        const nameContent = getNameFromProperties(f.properties);
+                        layer.bindPopup(nameContent ? `<strong>${nameContent}</strong>` : "无名称数据");
+                    }
+                } 
+            });
+            if(item.visible) {
+                l.addTo(map); 
+                setTimeout(() => updateLabels(item.id), 100);
+            }
+            layerInstances[item.id] = l; 
+            try { map.fitBounds(l.getBounds()); } catch(e){}
+        }
+        renderLists(); 
+        if(isFogActive) drawFog();
+    }
+
+    const STYLE_PRESETS = [
+        {c:'#e63946'},{c:'#457b9d'},{c:'#2a9d8f'},{c:'#f4a261'},{c:'#9b5de5'},
+        {c:'#28a745'},{c:'#fd7e14'},{c:'#6f42c1'},{c:'#20c997'},{c:'#dc3545'},
+        {c:'#333333'},{c:'#6c757d'},{c:'#17a2b8'},{c:'#ffc107'},{c:'#007bff'}
+    ];
+    const LABEL_COLOR_PRESETS = [
+        {c:'#000000'},{c:'#333333'},{c:'#666666'},{c:'#999999'},{c:'#ffffff'},
+        {c:'#dc3545'},{c:'#fd7e14'},{c:'#ffc107'},{c:'#28a745'},{c:'#17a2b8'},
+        {c:'#007bff'},{c:'#6f42c1'},{c:'#e63946'},{c:'#d63384'},{c:'#20c997'}
+    ];
+    let selStyleIdx = 0;
+    let selLabelColorIdx = 0;
+    // 初始化图形样式颜色选择器
+    const p = document.getElementById('colorPalette');
+    STYLE_PRESETS.forEach((s, i) => { 
+        const d = document.createElement('div'); 
+        d.className = 'color-circle'; 
+        d.style.background = s.c; 
+        d.onclick = () => { 
+            selStyleIdx = i; 
+            p.querySelectorAll('.color-circle').forEach(c => c.classList.remove('selected')); 
+            d.classList.add('selected'); 
+        }; 
+        p.appendChild(d); 
+    });
+    
+    // 初始化注记颜色选择器
+    const lp = document.getElementById('labelColorPalette');
+    LABEL_COLOR_PRESETS.forEach((s, i) => { 
+        const d = document.createElement('div'); 
+        d.className = 'color-circle'; 
+        d.style.background = s.c; 
+        d.onclick = () => { 
+            selLabelColorIdx = i; 
+            lp.querySelectorAll('.color-circle').forEach(c => c.classList.remove('selected')); 
+            d.classList.add('selected'); 
+        }; 
+        lp.appendChild(d); 
+    });
+    // 获取名称字段
+    function getNameFromProperties(properties) {
+        if (!properties) return null;
+        const p = properties;
+        return p["名称"] || p["name"] || p["Name"] || p["NAME"] || 
+               p["title"] || p["Title"] || p["地名"] || p["label"] || 
+               p["地名名称"] || p["地点"] || p["place"] || p["Place"];
+    }
+
+    // 创建文字注记
+    function createLabel(layer, name, labelStyle) {
+        if (!name || !labelStyle.show) return null;
+        let latlng;
+        if (layer.getLatLng) {
+            latlng = layer.getLatLng();
+        } else if (layer.getBounds) {
+            latlng = layer.getBounds().getCenter();
+        } else {
+            return null;
+        }
+        const label = L.marker(latlng, {
+            icon: L.divIcon({
+                className: 'map-label-container',
+                html: `<div class="map-label" style="color:${labelStyle.color};font-size:${labelStyle.fontSize}px;">${name}</div>`,
+                iconSize: null,
+                iconAnchor: [0, 0]
+            }),
+            interactive: false,
+            zIndexOffset: 1000
+        });
+        return label;
+    }
+
+    // 更新图层的注记
+    function updateLabels(itemId) {
+        const item = appData.find(x => x.id === itemId);
+        if (!item || item.type === 'photo') return;
+        if (labelLayers[itemId]) {
+            labelLayers[itemId].forEach(l => map.removeLayer(l));
+        }
+        labelLayers[itemId] = [];
+        if (!item.content.labelStyle.show) return;
+        const geoJsonLayer = layerInstances[itemId];
+        if (!geoJsonLayer) return;
+        geoJsonLayer.eachLayer(layer => {
+            const feature = layer.feature;
+            if (feature && feature.properties) {
+                const name = getNameFromProperties(feature.properties);
+                if (name) {
+                    const label = createLabel(layer, name, item.content.labelStyle);
+                    if (label) {
+                        label.addTo(map);
+                        labelLayers[itemId].push(label);
+                    }
+                }
+            }
+        });
+    }
+
+    // 移除图层的注记
+    function removeLabels(itemId) {
+        if (labelLayers[itemId]) {
+            labelLayers[itemId].forEach(l => map.removeLayer(l));
+            delete labelLayers[itemId];
+        }
+    }
+
+    // 打开图形样式编辑器
+    function openStyleModal(id) { 
+        currentEditId = id; 
+        const item = appData.find(x => x.id === id);
+        if (!item || !item.content) return;
+        const style = item.content.style || {};
+        document.getElementById('weightInput').value = style.weight || 3;
+        document.getElementById('weightVal').innerText = style.weight || 3;
+        document.getElementById('radiusInput').value = style.radius || 6;
+        document.getElementById('radiusVal').innerText = style.radius || 6;
+        document.getElementById('fillOpacityInput').value = Math.round((style.fillOpacity || 0.3) * 100);
+        document.getElementById('fillOpacityVal').innerText = Math.round((style.fillOpacity || 0.3) * 100);
+        const geoType = item.content.geojson && item.content.geojson.features ? 
+            item.content.geojson.features[0].geometry.type : 'Unknown';
+        document.getElementById('styleGeometryType').innerText = geoType;
+        toggleModal('styleModalOverlay', true); 
+    }
+    
+    // 应用图形样式
+    function applyStyle() {
+        if(!currentEditId) return; 
+        const s = STYLE_PRESETS[selStyleIdx];
+        const w = parseInt(document.getElementById('weightInput').value);
+        const r = parseInt(document.getElementById('radiusInput').value);
+        const fo = parseInt(document.getElementById('fillOpacityInput').value) / 100;
+        const ns = { color: s.c, weight: w, radius: r, fillColor: s.c, fillOpacity: fo, opacity: 1 };
+        const l = layerInstances[currentEditId]; 
+        if(l) l.setStyle(ns); 
+        const item = appData.find(x => x.id === currentEditId);
+        if(item && item.content) item.content.style = ns; 
+        toggleModal('styleModalOverlay', false);
+        showToast('图形样式已更新', 'success');
+    }
+    
+    // 打开注记样式编辑器
+    function openLabelStyleModal(id) {
+        currentEditId = id;
+        const item = appData.find(x => x.id === id);
+        if (!item || !item.content) return;
+        const labelStyle = item.content.labelStyle || { color: '#000000', fontSize: 13, show: true };
+        document.getElementById('labelSizeInput').value = labelStyle.fontSize;
+        document.getElementById('labelSizeVal').innerText = labelStyle.fontSize;
+        document.getElementById('labelShowInput').checked = labelStyle.show;
+        toggleModal('labelStyleModalOverlay', true);
+    }
+    
+    // 应用注记样式
+    function applyLabelStyle() {
+        if(!currentEditId) return;
+        const item = appData.find(x => x.id === currentEditId);
+        if(!item || !item.content) return;
+        const newLabelStyle = {
+            color: LABEL_COLOR_PRESETS[selLabelColorIdx].c,
+            fontSize: parseInt(document.getElementById('labelSizeInput').value),
+            show: document.getElementById('labelShowInput').checked
+        };
+        item.content.labelStyle = newLabelStyle;
+        if (item.visible) {
+            updateLabels(currentEditId);
+        }
+        toggleModal('labelStyleModalOverlay', false);
+        showToast('注记样式已更新', 'success');
+    }
+    
+    // 切换注记显示
+    function toggleLabelVisibility(id) {
+        const item = appData.find(x => x.id === id);
+        if(!item || !item.content) return;
+        item.content.labelStyle.show = !item.content.labelStyle.show;
+        if (item.visible) {
+            if (item.content.labelStyle.show) {
+                updateLabels(id);
+            } else {
+                removeLabels(id);
+            }
+        }
+        showToast(item.content.labelStyle.show ? '注记已显示' : '注记已隐藏', 'info');
+    }
+
+    function renderLists() {
+        const pc = document.getElementById('photoListContainer'), 
+              gc = document.getElementById('geoListContainer'),
+              sc = document.getElementById('shpListContainer'); 
+        pc.innerHTML = ''; gc.innerHTML = ''; sc.innerHTML = '';
+        
+        const ps = appData.filter(x => x.type === 'photo').reverse(), 
+              gs = appData.filter(x => x.type === 'geo').reverse(),
+              ss = appData.filter(x => x.type === 'shp').reverse();
+              
+        document.getElementById('photoCount').innerText = ps.length; 
+        document.getElementById('geoCount').innerText = gs.length;
+        document.getElementById('shpCount').innerText = ss.length;
+        
+        const mk = (i) => {
+            const d = document.createElement('div'); 
+            d.className = `layer-item ${i.type==='geo'?'geo-item':''} ${i.type==='shp'?'shp-item':''}`;
+            const countInfo = i.type === 'shp' && i.content.featureCount ? ` (${i.content.featureCount}要素)` : '';
+            const labelIndicator = (i.type === 'geo' || i.type === 'shp') && i.content.labelStyle && i.content.labelStyle.show ? ' 🏷️' : '';
+            d.innerHTML = `<div class="layer-info" onclick="zoomTo('${i.id}')"><div class="layer-name">${i.name}${countInfo}${labelIndicator}</div><div class="layer-meta">${i.dateStr}</div></div><div style="display:flex;gap:2px"><button class="icon-btn" onclick="toggleVis('${i.id}',this)" style="opacity:${i.visible?1:0.3}">👁️</button><button class="icon-btn" onclick="delItem('${i.id}')">🗑️</button></div>`;
+            if(i.type === 'geo' || i.type === 'shp') {
+                d.ondblclick = e => { showContextMenu(e, i.id); };
+            }
+            return d;
+        }; 
+        ps.forEach(i => pc.appendChild(mk(i))); 
+        gs.forEach(i => gc.appendChild(mk(i)));
+        ss.forEach(i => sc.appendChild(mk(i)));
+    }
+    
+    window.zoomTo = (id) => { 
+        const item = appData.find(x => x.id === id); 
+        if(!item.visible) return showToast("图层处于隐藏状态", "info"); 
+        const l = layerInstances[id]; 
+        if(item.type === 'photo') { 
+            if(heatLayer) return showToast("请先关闭热力图模式", "info"); 
+            clusterGroup.zoomToShowLayer(l, () => l.openPopup()); 
+        } else {
+            try {
+                map.fitBounds(l.getBounds(), { padding: [50, 50], maxZoom: 16 }); 
+            } catch(e) {
+                showToast('无法定位到该图层', 'error');
+            }
+        }
+    }
+    window.toggleVis = (id, btn) => {
+        const i = appData.find(x => x.id === id); i.visible = !i.visible; btn.style.opacity = i.visible ? 1 : 0.3; const l = layerInstances[id];
+        if(i.type === 'photo') { if(heatLayer) toggleHeatmap(); i.visible ? clusterGroup.addLayer(l) : clusterGroup.removeLayer(l); } 
+        else {
+            if (i.visible) {
+                map.addLayer(l);
+                updateLabels(id);
+            } else {
+                map.removeLayer(l);
+                removeLabels(id);
+            }
+        }
+        if(isFogActive) drawFog();
+    }
+    window.delItem = (id) => { 
+        if(!confirm("确定要删除这个图层吗？")) return; 
+        const i = appData.find(x => x.id === id); 
+        const l = layerInstances[id]; 
+        if(i.type === 'photo') clusterGroup.removeLayer(l); 
+        else {
+            map.removeLayer(l);
+            removeLabels(id);
+        }
+        delete layerInstances[id]; 
+        appData = appData.filter(x => x.id !== id); 
+        renderLists(); 
+        if(heatLayer) toggleHeatmap(); 
+        if(isFogActive) drawFog(); 
+        showToast('图层已删除', 'info');
+    }
+    window.saveProject = () => { 
+        if(!appData.length) return showToast("没有数据可保存", "error"); 
+        loading(true, '正在保存项目...');
+        setTimeout(() => {
+            const b = new Blob([JSON.stringify(appData)], {type:'application/json'}); 
+            const a = document.createElement('a'); 
+            a.href = URL.createObjectURL(b); 
+            a.download = `map_v11_0_${Date.now()}.json`; 
+            a.click(); 
+            loading(false);
+            showToast('项目已保存', 'success');
+        }, 500);
+    }
+    window.loadProject = (inp) => {
+        if(!inp.files[0]) return; 
+        loading(true, '正在加载项目...'); 
+        const r = new FileReader();
+        r.onload = e => { 
+            try { 
+                const j = JSON.parse(e.target.result); 
+                appData = []; 
+                clusterGroup.clearLayers(); 
+                for(let k in layerInstances) if(map.hasLayer(layerInstances[k])) map.removeLayer(layerInstances[k]); 
+                layerInstances = {}; 
+                j.forEach(i => { 
+                    if(i.rawDate) i.rawDate = new Date(i.rawDate); 
+                    else if(i.type==='photo' && i.dateStr) i.rawDate = new Date(i.dateStr); 
+                    addData(i); 
+                }); 
+                showToast(`项目加载完成，共 ${j.length} 个图层`, "success"); 
+            } catch(x) { 
+                showToast("项目文件解析错误", "error"); 
+            } 
+            loading(false); 
+            inp.value = ""; 
+        }; 
+        r.readAsText(inp.files[0]);
+    }
+
+    // --- 工具函数 ---
+    function toggleModal(id, show) { document.getElementById(id).style.display = show ? 'flex' : 'none'; }
+    function convertDMS(dms, r) { return (dms[0] + dms[1]/60 + dms[2]/3600) * (r === 'S' || r === 'W' ? -1 : 1); }
+    
+    // 增强的loading函数
+    function loading(show, text = '处理中...', detail = '') {
+        const loadingEl = document.getElementById('loading');
+        const textEl = document.getElementById('loadingText');
+        const detailEl = document.getElementById('loadingDetail');
+        
+        loadingEl.style.display = show ? 'flex' : 'none';
+        textEl.textContent = text;
+        detailEl.textContent = detail;
+    }
+    
+    function updateLoadingText(text, detail = '') {
+        document.getElementById('loadingText').textContent = text;
+        if(detail) document.getElementById('loadingDetail').textContent = detail;
+    }
+    
+    // Toast提示函数
+    function showToast(message, type = 'info', duration = 3000) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.className = type;
+        toast.style.display = 'block';
+        
+        setTimeout(() => {
+            toast.style.display = 'none';
+        }, duration);
+    }
+
+    // 点击页面其他地方关闭右键菜单
+    document.addEventListener('click', function(e) {
+        const menu = document.getElementById('contextMenu');
+        if (!menu.contains(e.target)) {
+            menu.style.display = 'none';
+        }
+    });
+
+    // 页面加载完成提示
+    window.onload = function() {
+        showToast('地图加载完成，支持SHP、GeoJSON、KML格式数据', 'success', 4000);
+    };
+</script>
+</body>
+</html>
